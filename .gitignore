@@ -1,0 +1,21 @@
+# Entornos virtuales
+venv/
+env/
+.venv/
+*/__pycache__/
+*.pyc
+
+# Archivos de configuración local y secretos (¡IMPORTANTE!)
+*.sqlite3
+*.local_settings.py
+.env
+
+# Archivos de sistema operativo
+.DS_Store
+Thumbs.db
+
+# Static files (si usas collectstatic en local para pruebas)
+# /static/ # Descomenta si no quieres subir la carpeta generada por collectstatic
+
+# Media files
+/media/ # Descomenta si no quieres subir archivos subidos por usuarios en desarrollo
