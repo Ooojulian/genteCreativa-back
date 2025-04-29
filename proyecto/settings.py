@@ -13,13 +13,19 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 # SECURITY WARNING: keep the secret key used in production secret!
 # Asegúrate que esta sea la clave correcta y consistente
-SECRET_KEY = 'django-insecure-^#689i%7zyfzrj=@mz*x*$rnru3^$9x%05ygs=eelkw%al0)fx'
+SECRET_KEY = os.environ.get('SECRET_KEY')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = os.environ.get('DEBUG', 'True') == 'True'
 
-ALLOWED_HOSTS = [] # Configura si es necesario para despliegue
-
+ALLOWED_HOSTS_ENV = os.environ.get('DJANGO_ALLOWED_HOSTS')
+if ALLOWED_HOSTS_ENV:
+    # Separa los hosts por coma si vienen de la variable de entorno
+    ALLOWED_HOSTS = ALLOWED_HOSTS_ENV.split(',')
+else:
+    # Valor por defecto si la variable no está definida (para desarrollo local o si olvidas ponerla)
+    ALLOWED_HOSTS = ['localhost', '127.0.0.1'] # O dejarla vacía: []
+# --- FIN CORRECCIÓN ---
 # Configuración de CORS (Parece correcta para desarrollo local)
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",
@@ -173,6 +179,7 @@ if not DEBUG:
 # Opcional: Si usas la app staticfiles de Django, este directorio es donde
 # Django buscará archivos estáticos adicionales que no están dentro de tus apps.
 # STATICFILES_DIRS = [ os.path.join(BASE_DIR, 'static'), ] # Ejemplo
+
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 
