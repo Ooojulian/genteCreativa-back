@@ -13,7 +13,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 # SECURITY WARNING: keep the secret key used in production secret!
 # Asegúrate que esta sea la clave correcta y consistente
-SECRET_KEY = os.environ.get('SECRET_KEY')
+SECRET_KEY = os.environ.get('SECRET_KEY', 'django-insecure-^#689i%7zyfzrj=@mz*x*$rnru3^$9x%05ygs=eelkw%al0)fx')
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.environ.get('DEBUG', 'True') == 'True'
@@ -27,10 +27,21 @@ else:
     ALLOWED_HOSTS = ['localhost', '127.0.0.1'] # O dejarla vacía: []
 # --- FIN CORRECCIÓN ---
 # Configuración de CORS (Parece correcta para desarrollo local)
-CORS_ALLOWED_ORIGINS = [
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-]
+
+
+# === CORS (Cross-Origin Resource Sharing) ===
+# --- CORRECCIÓN AQUÍ ---
+CORS_ALLOWED_ORIGINS_ENV = os.environ.get('CORS_ALLOWED_ORIGINS')
+if CORS_ALLOWED_ORIGINS_ENV:
+    # Separa por coma los orígenes permitidos desde la variable de entorno
+    # Ej: 'https://frontend1.com,https://frontend2.com'
+    CORS_ALLOWED_ORIGINS = CORS_ALLOWED_ORIGINS_ENV.split(',')
+else:
+    # Fallback para desarrollo local (permite peticiones desde localhost:3000)
+    CORS_ALLOWED_ORIGINS = [
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ]
 
 # URL base donde corre tu aplicación Frontend (React)
 # Cambia esto en producción a tu dominio real
