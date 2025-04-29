@@ -10,3 +10,8 @@ python manage.py collectstatic --no-input
 
 # Apply any outstanding database migrations
 python manage.py migrate
+
+# --- AÑADIR ESTA LÍNEA ---
+# Crear superusuario inicial (leerá variables de entorno)
+python manage.py create_initial_superuser
+# --- FIN AÑADIR 
