@@ -153,17 +153,26 @@ USE_I18N = True
 USE_TZ = True # Mantener True es generalmente recomendado
 
 
+# Static files (CSS, JavaScript, Images)
+# https://docs.djangoproject.com/en/5.0/howto/static-files/
+
 STATIC_URL = '/static/'
 
-# This production code might break development mode, so we check whether we're in DEBUG mode
-if not DEBUG:
-    # Tell Django to copy static assets into a path called `staticfiles` (this is specific to Render)
-    STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
+# --- CORRECCIÓN ---
+# Define STATIC_ROOT siempre, ya que collectstatic lo necesita.
+# Apunta al directorio 'staticfiles' en la raíz del proyecto (backend/).
+# Asegúrate de que 'os' y 'BASE_DIR' estén importados/definidos correctamente al inicio del archivo.
+STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
+# --- FIN CORRECCIÓN ---
 
-    # Enable the WhiteNoise storage backend, which compresses static files to reduce disk use
-    # and renames the files with unique names for each version to support long-term caching
+# Configuraciones específicas de producción (cuando DEBUG es False)
+if not DEBUG:
+    # Habilita el almacenamiento de WhiteNoise SÓLO en producción.
     STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
-# Default primary key field type
+
+# Opcional: Si usas la app staticfiles de Django, este directorio es donde
+# Django buscará archivos estáticos adicionales que no están dentro de tus apps.
+# STATICFILES_DIRS = [ os.path.join(BASE_DIR, 'static'), ] # Ejemplo
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 
