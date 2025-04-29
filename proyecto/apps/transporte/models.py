@@ -1,12 +1,74 @@
 # backend/proyecto/apps/transporte/models.py
 from django.db import models
-from apps.usuarios.models import Usuario
-from apps.bodegaje.models import Producto # Necesario para ItemPedido
-from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 from django.core.exceptions import ValidationError
 import uuid
 from django.conf import settings
+
+class TipoVehiculo(models.Model):
+    """Define los tipos de vehículos gestionables."""
+    nombre = models.CharField(
+        max_length=100,
+        unique=True, # El nombre del tipo debe ser único
+        verbose_name=_("Nombre del Tipo")
+    )
+    descripcion = models.TextField(
+        blank=True, null=True,
+        verbose_name=_("Descripción")
+    )
+    # Podrías añadir un campo 'codigo' o 'slug' si lo necesitas, ej: MOTO, PEQUENO
+    # codigo = models.SlugField(max_length=20, unique=True, blank=True, null=True)
+
+    class Meta:
+        verbose_name = _("Tipo de Vehículo")
+        verbose_name_plural = _("Tipos de Vehículo")
+        ordering = ['nombre']
+
+    def __str__(self):
+        return self.nombre
+
+class Vehiculo(models.Model):
+    placa = models.CharField(
+        max_length=10,
+        unique=True, # La placa debe ser única
+        verbose_name=_("Placa"),
+        help_text=_("Placa única del vehículo (Ej: AAA123)")
+    )
+    tipo = models.ForeignKey(
+        TipoVehiculo, # Apunta al nuevo modelo
+        on_delete=models.PROTECT, # Evita borrar un tipo si hay vehículos usándolo
+        related_name='vehiculos', # Cómo acceder a los vehículos desde el tipo
+        verbose_name=_("Tipo de Vehículo"),
+        null=True
+    )
+    marca = models.CharField(
+        max_length=100,
+        blank=True, null=True, # Opcional
+        verbose_name=_("Marca")
+    )
+    modelo = models.CharField(
+        max_length=100,
+        blank=True, null=True, # Opcional
+        verbose_name=_("Modelo/Línea")
+    )
+    year = models.PositiveIntegerField(
+        blank=True, null=True, # Opcional
+        verbose_name=_("Año")
+    )
+    # Podrías añadir más campos como color, capacidad, SOAT, Tecnomecánica, etc.
+    activo = models.BooleanField(
+        default=True,
+        verbose_name=_("¿Vehículo activo?"),
+        help_text=_("Indica si el vehículo está disponible para ser asignado.")
+    )
+
+    class Meta:
+        verbose_name = _("Vehículo")
+        verbose_name_plural = _("Vehículos")
+        ordering = ['placa'] # Ordenar por placa por defecto
+
+    def __str__(self):
+        return f"{self.placa} ({self.get_tipo_display()})" # Muestra placa y tipo
 
 
 # --- Función para definir ruta de subida ---
@@ -60,7 +122,7 @@ class PruebaEntrega(models.Model):
         verbose_name=_("Archivo de Foto")
     )
     subido_por = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
+        settings.AUTH_USER_MODEL, # <-- USA settings.AUTH_USER_MODEL
         on_delete=models.SET_NULL,
         null=True, blank=True,
         verbose_name=_("Subido por")
@@ -95,12 +157,13 @@ class PruebaEntrega(models.Model):
 
 # --- Modelo ConfirmacionCliente ---
 class ConfirmacionCliente(models.Model):
-    pedido = models.OneToOneField( # Solo UNA confirmación por pedido
-        'PedidoTransporte',
+    pedido = models.OneToOneField(
+         'PedidoTransporte', # <-- Bien usar string
         on_delete=models.CASCADE,
         related_name='confirmacion_cliente',
         verbose_name=_("Pedido Asociado")
     )
+
     # Token único para la URL del formulario público
     token = models.UUIDField(
         default=uuid.uuid4,
@@ -154,8 +217,19 @@ class PedidoTransporte(models.Model):
     )
 
     # --- Campos Principales ---
-    cliente = models.ForeignKey(Usuario, on_delete=models.CASCADE, related_name='pedidos_cliente')
-    conductor = models.ForeignKey(Usuario, on_delete=models.SET_NULL, null=True, blank=True, related_name='pedidos_conductor')
+    cliente = models.ForeignKey(
+        settings.AUTH_USER_MODEL, # <-- USA settings.AUTH_USER_MODEL
+        on_delete=models.CASCADE,
+        related_name='pedidos_cliente'
+        # Puedes añadir limit_choices_to={'rol__nombre': 'cliente'} si quieres restringir en formularios
+    )
+    conductor = models.ForeignKey(
+        settings.AUTH_USER_MODEL, # <-- USA settings.AUTH_USER_MODEL
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='pedidos_conductor'
+        # Puedes añadir limit_choices_to={'rol__nombre': 'conductor'}
+    )
     # Origen/Destino ahora permiten nulos para casos como RENTA_VEHICULO
     origen = models.CharField(max_length=255, null=True, blank=True, verbose_name=_("Origen"))
     destino = models.CharField(max_length=255, null=True, blank=True, verbose_name=_("Destino"))
@@ -252,13 +326,14 @@ class PedidoTransporte(models.Model):
 # --- Modelo ItemPedido (SIN CAMBIOS, solo aplica a BODEGAJE_SALIDA) ---
 class ItemPedido(models.Model):
     pedido = models.ForeignKey(
-        PedidoTransporte,
+        'PedidoTransporte', # <-- Bien usar string
         on_delete=models.CASCADE,
         related_name='items_pedido',
         verbose_name=_("Pedido Asociado")
     )
     producto = models.ForeignKey(
-        Producto,
+         'bodegaje.Producto', # <-- Mejor usar string aquí también por consistencia
+        # Producto, # Si lo tenías así, cámbialo
         on_delete=models.PROTECT,
         verbose_name=_("Producto")
     )

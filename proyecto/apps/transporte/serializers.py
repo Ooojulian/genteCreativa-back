@@ -1,13 +1,71 @@
 # backend/proyecto/apps/transporte/serializers.py
-from rest_framework import serializers
-from .models import PedidoTransporte, ItemPedido, PruebaEntrega, ConfirmacionCliente # Modelos de esta app
+from rest_framework import serializers, viewsets
+from .models import PedidoTransporte, ItemPedido, PruebaEntrega, ConfirmacionCliente, Vehiculo, TipoVehiculo # Modelos de esta app
+#from .serializers import VehiculoSerializer
+from rest_framework.permissions import IsAuthenticated, IsAdminUser
+from apps.usuarios.permissions import IsJefeEmpresa, IsJefeInventario
 from apps.usuarios.models import Usuario # Modelo de otra app
 from apps.bodegaje.models import Producto, Inventario # Modelos de otra app
 from django.utils.translation import gettext_lazy as _ # Para mensajes de error
 from django.core.exceptions import ObjectDoesNotExist # Para manejo de errores
 
-# Confirmacion de Formulario Cliente
+class VehiculoSerializer(serializers.ModelSerializer):
+    # Campo de Lectura: Muestra el objeto TipoVehiculo anidado o solo su nombre
+    # Opción 1: Mostrar objeto completo (más datos, pero más pesado)
+    # tipo = TipoVehiculoSerializer(read_only=True)
+    # Opción 2: Mostrar solo el nombre del tipo (más ligero)
+    tipo = serializers.StringRelatedField(read_only=True)
 
+    # Campo de Escritura: Recibe el ID del TipoVehiculo
+    tipo_id = serializers.PrimaryKeyRelatedField(
+        queryset=TipoVehiculo.objects.all(), # Opciones posibles
+        source='tipo',              # Apunta al campo 'tipo' del modelo Vehiculo
+        write_only=True,
+        label="Tipo de Vehículo (ID)" # Etiqueta para la API explorable
+    )
+
+    class Meta:
+        model = Vehiculo
+        # --- ACTUALIZAR fields ---
+        fields = [
+            'id',
+            'placa',
+            'tipo',          # Para lectura (mostrará el nombre o el objeto según opción arriba)
+            'tipo_id',       # Para escritura (recibe el ID)
+            'marca',
+            'modelo',
+            'year',
+            'activo',
+        ]
+        # Ya no necesitamos 'tipo_display' porque 'tipo' ahora da el nombre o el objeto.
+        # read_only_fields = ['id', 'tipo'] # Hacemos 'tipo' read_only para lectura
+
+
+class TipoVehiculoSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = TipoVehiculo
+        fields = ['id', 'nombre', 'descripcion'] # Incluye los campos del modelo
+# --- FIN NUEVO ---
+
+
+class VehiculoViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet para gestionar los Vehículos (CRUD).
+    Accesible por Admin y Jefe de Empresa.
+    """
+    queryset = Vehiculo.objects.all().order_by('placa') # Obtiene todos los vehículos ordenados
+    serializer_class = VehiculoSerializer
+    # Define quién puede acceder a esta gestión
+    permission_classes = [IsAuthenticated, (IsAdminUser | IsJefeEmpresa)]
+
+    # Opcional: Podrías añadir filtros aquí más adelante si necesitas
+    # filter_backends = [filters.SearchFilter, DjangoFilterBackend]
+    # search_fields = ['placa', 'marca', 'modelo']
+    # filterset_fields = ['tipo', 'activo']
+
+# --- FIN NUEVO VIEWSET ---
+
+# Confirmacion de Formulario Cliente
 class ConfirmacionClienteSerializer(serializers.ModelSerializer):
     # Hacemos los campos escribibles que vienen del formulario público
     # La firma viene como un string largo base64
@@ -55,6 +113,32 @@ class ConfirmacionClienteSerializer(serializers.ModelSerializer):
         # La fecha de confirmación se pondrá en la vista después de llamar a save()
         instance.save()
         return instance
+    
+class VehiculoSerializer(serializers.ModelSerializer):
+    # Campo de Lectura: Usa el serializer anidado para devolver el objeto TipoVehiculo
+    tipo = TipoVehiculoSerializer(read_only=True)
+
+    # Campo de Escritura: Recibe el ID del TipoVehiculo al crear/actualizar
+    tipo_id = serializers.PrimaryKeyRelatedField(
+        queryset=TipoVehiculo.objects.all(),
+        source='tipo',              # Apunta al campo 'tipo' (FK) del modelo Vehiculo
+        write_only=True,
+        label="Tipo de Vehículo (ID)"
+    )
+
+    class Meta:
+        model = Vehiculo
+        # --- ACTUALIZAR fields ---
+        fields = [
+            'id',
+            'placa',
+            'tipo',          # Para lectura (ahora devuelve el objeto TipoVehiculo)
+            'tipo_id',       # Para escritura (recibe el ID)
+            'marca',
+            'modelo',
+            'year',
+            'activo',
+        ]
 
 # --- Serializer para PruebaEntrega ---
 class PruebaEntregaSerializer(serializers.ModelSerializer):

@@ -3,6 +3,24 @@ from .models import Producto, Inventario, Ubicacion, Empresa, MovimientoInventar
 from ..usuarios.serializers import EmpresaSimpleSerializer
 
 
+
+class EntradaInventarioSerializer(serializers.Serializer):
+    producto_id = serializers.PrimaryKeyRelatedField(queryset=Producto.objects.all(), required=True)
+    ubicacion_id = serializers.PrimaryKeyRelatedField(queryset=Ubicacion.objects.all(), required=True)
+    empresa_id = serializers.PrimaryKeyRelatedField(queryset=Empresa.objects.all(), required=True)
+    cantidad = serializers.IntegerField(min_value=1, required=True) # Debe ser al menos 1
+    motivo = serializers.CharField(max_length=255, required=False, allow_blank=True, allow_null=True)
+
+    # Puedes añadir validaciones extra si necesitas
+
+class SalidaInventarioSerializer(serializers.Serializer):
+    producto_id = serializers.PrimaryKeyRelatedField(queryset=Producto.objects.all(), required=True)
+    ubicacion_id = serializers.PrimaryKeyRelatedField(queryset=Ubicacion.objects.all(), required=True)
+    empresa_id = serializers.PrimaryKeyRelatedField(queryset=Empresa.objects.all(), required=True)
+    cantidad = serializers.IntegerField(min_value=1, required=True) # Cantidad a retirar (positiva)
+    motivo = serializers.CharField(max_length=255, required=False, allow_blank=True, allow_null=True)
+
+
 # --- Serializer de Producto (Asegúrate que esté definido) ---
 class ProductoSerializer(serializers.ModelSerializer):
     class Meta:
@@ -18,7 +36,7 @@ class UbicacionSerializer(serializers.ModelSerializer):
 
 class InventarioSerializer(serializers.ModelSerializer):
     producto_nombre = serializers.StringRelatedField(source='producto', read_only=True, label="Producto")
-    #ubicacion_nombre = serializers.StringRelatedField(source='ubicacion', read_only=True, label="Ubicación")
+    ubicacion_nombre = serializers.StringRelatedField(source='ubicacion', read_only=True, label="Ubicación")
     empresa = EmpresaSimpleSerializer(read_only=True, label="Empresa Cliente")
     producto_id_read = serializers.IntegerField(source='producto.id', read_only=True, label="ID Producto")
     producto_id = serializers.PrimaryKeyRelatedField(queryset=Producto.objects.all(), source='producto', write_only=True, label="Producto (ID para Escritura)")
@@ -26,14 +44,14 @@ class InventarioSerializer(serializers.ModelSerializer):
     empresa_id = serializers.PrimaryKeyRelatedField(queryset=Empresa.objects.all(), source='empresa', write_only=True, required=True, allow_null=False, label="Empresa Cliente (ID para Escritura)")
     fecha_creacion = serializers.DateTimeField(read_only=True, format="%Y-%m-%dT%H:%M:%S.%fZ") # <-- AÑADIDO (formato ISO 8601 es estándar)
     
-    class Meta:
+    class Meta: 
         model = Inventario
         fields = [
             'id',
-            'producto_nombre', 'producto_id_read', #'ubicacion_nombre',
+            'producto_nombre', 'producto_id_read', 'ubicacion_nombre', # <<< ¡COMENTADO!
             'empresa', 'cantidad', #'fecha_actualizacion',
             'fecha_creacion',
-            'producto_id', 'ubicacion_id', 'empresa_id', # Campos de escritura
+            'producto_id', 'ubicacion_id', 'empresa_id',
         ]
         read_only_fields = ('fecha_actualizacion',)
 

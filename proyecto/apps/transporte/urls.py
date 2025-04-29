@@ -11,14 +11,21 @@ from .views import (
     ClientePedidoSimpleCreateView,
     PruebaEntregaUploadView,
     ConfirmacionClienteView,
-    HistorialMesClienteList
+    HistorialMesClienteList,
+    RemisionPDFView,
+    VehiculoViewSet,
+    TipoVehiculoViewSet
 )
 from .views import GenerarQRDataView
 
 router = DefaultRouter()
 router.register(r'pedidos', PedidoTransporteViewSet, basename='pedido-transporte') # Para Jefes/Admin
+router.register(r'vehiculos', VehiculoViewSet, basename='vehiculo')
+router.register(r'tipos-vehiculo', TipoVehiculoViewSet, basename='tipovehiculo')
+
 
 urlpatterns = [
+    path('pedidos/<int:pk>/remision/', RemisionPDFView.as_view(), name='pedido-remision-pdf'),
     # Esperar post para recibir la confirmación del cliente
     path('confirmar/<uuid:token>/', ConfirmacionClienteView.as_view(), name='confirmar-cliente'),
 

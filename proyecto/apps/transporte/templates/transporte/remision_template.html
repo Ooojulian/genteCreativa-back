@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Remisión Pedido {{ pedido.id }}</title>
+    <style>
+        /* Estilos CSS básicos para tu PDF */
+        body { font-family: sans-serif; font-size: 10pt; }
+        h1 { text-align: center; color: #333; }
+        h2 { border-bottom: 1px solid #ccc; padding-bottom: 5px; margin-top: 20px; font-size: 12pt;}
+        .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 20px; margin-bottom: 15px; }
+        .info-grid p { margin: 3px 0; }
+        strong { font-weight: bold; }
+        table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+        th, td { border: 1px solid #ddd; padding: 6px; text-align: left; }
+        th { background-color: #f2f2f2; }
+        .firma-img { max-width: 200px; max-height: 80px; border: 1px solid #eee; margin-top: 5px;}
+        .foto-thumb { max-width: 100px; max-height: 100px; margin: 5px; border: 1px solid #eee;}
+        .foto-gallery { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 5px; }
+        /* Puedes añadir muchos más estilos */
+    </style>
+</head>
+<body>
+    <h1>Remisión de Entrega/Servicio</h1>
+    <h2>Pedido #{{ pedido.id }} - {{ pedido.get_tipo_servicio_display }}</h2>
+
+    <div class="info-grid">
+        <div>
+            <p><strong>Fecha Creación:</strong> {{ pedido.fecha_creacion|date:"d/m/Y H:i" }}</p>
+            <p><strong>Cliente:</strong> {{ pedido.cliente.get_full_name|default:pedido.cliente.cedula }}</p>
+            <p><strong>Empresa Cliente:</strong> {{ pedido.cliente.empresa.nombre|default:"N/A" }}</p>
+            <p><strong>Estado:</strong> {{ pedido.get_estado_display }}</p>
+        </div>
+        <div>
+            <p><strong>Fecha Inicio Viaje:</strong> {{ pedido.fecha_inicio|date:"d/m/Y H:i"|default:"--" }}</p>
+            <p><strong>Fecha Fin Viaje:</strong> {{ pedido.fecha_fin|date:"d/m/Y H:i"|default:"--" }}</p>
+            <p><strong>Conductor:</strong> {{ pedido.conductor.get_full_name|default:pedido.conductor.cedula|default:"No Asignado" }}</p>
+        </div>
+    </div>
+
+    {% if pedido.origen or pedido.destino %}
+    <h2>Ruta y Programación</h2>
+    <div class="info-grid">
+        <div>
+            {% if pedido.origen %}<p><strong>Origen:</strong> {{ pedido.origen }}</p>{% endif %}
+            {% if pedido.hora_recogida_programada %}<p><strong>Recogida Prog.:</strong> {{ pedido.hora_recogida_programada|date:"d/m/Y H:i" }}</p>{% endif %}
+        </div>
+        <div>
+            {% if pedido.destino %}<p><strong>Destino:</strong> {{ pedido.destino }}</p>{% endif %}
+             {% if pedido.hora_entrega_programada %}<p><strong>Entrega Prog.:</strong> {{ pedido.hora_entrega_programada|date:"d/m/Y H:i" }}</p>{% endif %}
+        </div>
+    </div>
+    {% endif %}
+
+    {% if pedido.tipo_servicio == 'BODEGAJE_SALIDA' and items %}
+    <h2>Items Retirados</h2>
+        <table>
+            <thead><tr><th>Producto</th><th>Cantidad</th></tr></thead>
+            <tbody>
+            {% for item in items %}
+                <tr><td>{{ item.producto.nombre }} ({{ item.producto.sku }})</td><td>{{ item.cantidad }}</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    {% endif %}
+
+    {% if pedido.tipo_servicio == 'PASAJEROS' %}
+    <h2>Detalles Pasajeros</h2>
+        <p><strong>No. Pasajeros:</strong> {{ pedido.numero_pasajeros|default:"N/A" }}</p>
+        <p><strong>Tarifa:</strong> {{ pedido.get_tipo_tarifa_pasajero_display|default:"N/A" }}</p>
+        {% if pedido.duracion_estimada_horas %}<p><strong>Duración Estimada:</strong> {{ pedido.duracion_estimada_horas }}h</p>{% endif %}
+        {% if pedido.distancia_estimada_km %}<p><strong>Distancia Estimada:</strong> {{ pedido.distancia_estimada_km }}km</p>{% endif %}
+    {% endif %}
+    
+    {% if pedido.descripcion %}
+        <h2>Descripción / Notas Adicionales</h2>
+        <p>{{ pedido.descripcion }}</p>
+    {% endif %}
+
+    {% if pedido.confirmacion_cliente %}
+    <h2>Confirmación Cliente</h2>
+        <p><strong>Recibido por:</strong> {{ pedido.confirmacion_cliente.nombre_receptor }}</p>
+        {% if pedido.confirmacion_cliente.cedula_receptor %}<p><strong>Cédula/ID:</strong> {{ pedido.confirmacion_cliente.cedula_receptor }}</p>{% endif %}
+        <p><strong>Fecha:</strong> {{ pedido.confirmacion_cliente.fecha_confirmacion|date:"d/m/Y H:i" }}</p>
+        {% if pedido.confirmacion_cliente.observaciones %}<p><strong>Observaciones:</strong> {{ pedido.confirmacion_cliente.observaciones }}</p>{% endif %}
+        {% if pedido.confirmacion_cliente.firma_imagen_base64 %}
+        <div>
+            <strong>Firma:</strong><br>
+            <img src="{{ pedido.confirmacion_cliente.firma_imagen_base64 }}" alt="Firma Cliente" class="firma-img">
+        </div>
+        {% endif %}
+    {% else %}
+         <h2>Confirmación Cliente</h2>
+         <p>-- Pendiente --</p>
+    {% endif %}
+
+    </body>
+</html>

@@ -1,13 +1,14 @@
-"""
-WSGI config for proyecto project.
-
-It exposes the WSGI callable as a module-level variable named ``application``.
-
-For more information on this file, see
-https://docs.djangoproject.com/en/4.2/howto/deployment/wsgi/
-"""
-
 import os
+import sys
+from pathlib import Path
+
+# --- CORRECCIÓN AQUÍ ---
+# Añade el directorio que CONTIENE 'apps' (es decir, 'proyecto/') al sys.path
+PROJECT_DIR = Path(__file__).resolve().parent
+# BASE_DIR = PROJECT_DIR.parent
+# sys.path.append(str(BASE_DIR))
+sys.path.append(str(PROJECT_DIR))
+# --- FIN CORRECCIÓN ---
 
 from django.core.wsgi import get_wsgi_application
 

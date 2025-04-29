@@ -2,6 +2,7 @@
 
 import os
 from pathlib import Path
+import dj_database_url 
 from datetime import timedelta # Asegúrate que esté importado
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -45,6 +46,7 @@ INSTALLED_APPS = [
     # Terceros
     'rest_framework',
     'rest_framework_simplejwt', # Asegúrate que esté instalada
+    'django_filters',
 
     # Tus apps
     'apps.usuarios',
@@ -56,6 +58,7 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',            # CORS primero
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware', 
     'django.contrib.sessions.middleware.SessionMiddleware', # Necesario para Admin/Login Django
     'django.middleware.common.CommonMiddleware',
     # 'django.middleware.csrf.CsrfViewMiddleware',      # <-- Comentado por ahora (para pruebas API)
@@ -89,14 +92,11 @@ WSGI_APPLICATION = 'proyecto.wsgi.application'
 
 # Database (Configuración PostgreSQL parece bien para local)
 DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'gestion_db',
-        'USER': 'gestion_user',
-        'PASSWORD': '1234',
-        'HOST': 'localhost', # O la IP/hostname de tu BD
-        'PORT': '5432',      # Puerto por defecto de PostgreSQL
-    }
+    'default': dj_database_url.config(
+        # Reemplaza default='' con tu cadena de conexión local
+        default='postgresql://gestion_user:1234@localhost:5432/gestion_db',
+        conn_max_age=600
+    )
 }
 
 
@@ -153,14 +153,16 @@ USE_I18N = True
 USE_TZ = True # Mantener True es generalmente recomendado
 
 
-# Static files (CSS, JavaScript, Images)
-STATIC_URL = 'static/'
-# Directorio donde collectstatic reunirá los archivos estáticos para producción
-STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
-# Opcional: Directorios adicionales para buscar archivos estáticos
-# STATICFILES_DIRS = [ os.path.join(BASE_DIR, 'static'), ]
+STATIC_URL = '/static/'
 
+# This production code might break development mode, so we check whether we're in DEBUG mode
+if not DEBUG:
+    # Tell Django to copy static assets into a path called `staticfiles` (this is specific to Render)
+    STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 
+    # Enable the WhiteNoise storage backend, which compresses static files to reduce disk use
+    # and renames the files with unique names for each version to support long-term caching
+    STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 # Default primary key field type
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 

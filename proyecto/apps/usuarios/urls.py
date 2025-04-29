@@ -2,7 +2,7 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 # Asegúrate que estas vistas SÍ estén definidas en usuarios/views.py
-from .views import UsuarioViewSet, EmpresaViewSet, MinimalAuthTestView # Añade MinimalAuthTestView
+from .views import UsuarioViewSet, EmpresaViewSet, MinimalAuthTestView, RolListView # Añade MinimalAuthTestView
 
 router = DefaultRouter()
 router.register(r'usuarios', UsuarioViewSet, basename='usuario')
@@ -13,4 +13,5 @@ urlpatterns = [
     path('', include(router.urls)),
     # Ruta de prueba para autenticación básica
     path('test-auth/', MinimalAuthTestView.as_view(), name='test-auth'),
+    path('roles/', RolListView.as_view(), name='rol-list'),
 ]

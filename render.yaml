@@ -1,0 +1,35 @@
+# render.yaml (Colocar en la carpeta backend/)
+
+databases:
+  - name: gestiondb      # Nombre para el servicio de BD en Render (puedes cambiarlo)
+    plan: free           # Plan gratuito de Render para la base de datos
+    databaseName: gestion  # Nombre de la base de datos PostgreSQL que se creará
+    user: gestion_user   # Nombre de usuario para la base de datos
+
+services:
+  - type: web            # Tipo de servicio: aplicación web
+    plan: free           # Plan gratuito de Render para el servicio web
+    name: gestion-web    # Nombre para tu servicio web en Render (puedes cambiarlo)
+    runtime: python      # El entorno de ejecución es Python
+    buildCommand: './build.sh' # El script que creaste para construir el proyecto
+    startCommand: 'python -m gunicorn proyecto.asgi:application -k uvicorn.workers.UvicornWorker' # Comando Gunicorn CORREGIDO con 'proyecto'
+    envVars:
+      - key: DATABASE_URL # Variable de entorno para la URL de la BD
+        fromDatabase:
+          name: gestiondb         # DEBE COINCIDIR con 'databases -> name' arriba
+          property: connectionString # Obtiene la URL de conexión de la BD creada
+      - key: SECRET_KEY            # Variable para la clave secreta de Django
+        generateValue: true        # Render generará un valor seguro automáticamente
+      - key: WEB_CONCURRENCY       # Número de workers Gunicorn (Render sugiere 4)
+        value: 4
+      # --- ¡IMPORTANTE! Añadir PYTHON_VERSION si es necesario ---
+      # Descomenta y ajusta si usas una versión específica de Python no predeterminada en Render
+      # - key: PYTHON_VERSION
+      #   value: 3.11 # O la versión que necesites (ej: 3.10, 3.12)
+      # --- Puedes añadir más variables de entorno si tu app las necesita ---
+      # Ejemplo: Si necesitas DEBUG=False en producción
+      # - key: DEBUG
+      #   value: False
+      # Ejemplo: Si necesitas configurar ALLOWED_HOSTS
+      # - key: DJANGO_ALLOWED_HOSTS
+      #   value: .onrender.com # O tu dominio personalizado

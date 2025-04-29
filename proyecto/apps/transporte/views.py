@@ -4,8 +4,8 @@ from rest_framework import generics, status, viewsets
 from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, FormParser # Para manejar subida de archivos
 from django.shortcuts import get_object_or_404 
-from .models import PedidoTransporte, PruebaEntrega, ConfirmacionCliente
-from .serializers import PedidoTransporteSerializer, PruebaEntregaSerializer
+from .models import PedidoTransporte, PruebaEntrega, ConfirmacionCliente, Vehiculo, TipoVehiculo
+from .serializers import PedidoTransporteSerializer, PruebaEntregaSerializer, TipoVehiculoSerializer
 from apps.usuarios.permissions import IsConductor
 from rest_framework.permissions import IsAuthenticated, IsAdminUser, AllowAny
 from rest_framework.exceptions import ValidationError
@@ -17,13 +17,102 @@ import logging
 from django.conf import settings
 from rest_framework.views import APIView
 # Asegúrate que IsCliente y otros permisos necesarios estén importados
-from apps.usuarios.permissions import IsCliente, IsConductor, IsJefeEmpresa
+from proyecto.apps.usuarios.permissions import IsCliente, IsConductor, IsJefeEmpresa
+from django.http import HttpResponse
+from django.template.loader import render_to_string
+from weasyprint import HTML, CSS # Importa WeasyPrint
+from django.conf import settings # Para buscar MEDIA_ROOT si usas fotos
+import os
+from apps.usuarios.permissions import IsJefeEmpresa
+from .serializers import VehiculoSerializer
 
 # Importa el modelo y el serializer principal
 from .models import PedidoTransporte    
 from .serializers import PedidoTransporteSerializer, ConfirmacionClienteSerializer
 
 logger = logging.getLogger(__name__)
+
+class TipoVehiculoViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet para gestionar los Tipos de Vehículo (CRUD).
+    Accesible por Admin y Jefe de Empresa.
+    """
+    queryset = TipoVehiculo.objects.all().order_by('nombre') # Obtiene todos los tipos ordenados
+    serializer_class = TipoVehiculoSerializer
+    # Define quién puede gestionar los tipos de vehículo
+    permission_classes = [IsAuthenticated, (IsAdminUser | IsJefeEmpresa)]
+
+    # No necesitamos filtros complejos aquí por ahora
+
+class VehiculoViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet para gestionar los Vehículos (CRUD).
+    Accesible por Admin y Jefe de Empresa.
+    """
+    queryset = Vehiculo.objects.all().order_by('placa') # Obtiene todos los vehículos ordenados
+    serializer_class = VehiculoSerializer
+    # Define quién puede acceder a esta gestión
+    permission_classes = [IsAuthenticated, (IsAdminUser | IsJefeEmpresa)]
+
+    # Opcional: Podrías añadir filtros aquí más adelante si necesitas
+    # filter_backends = [filters.SearchFilter, DjangoFilterBackend]
+    # search_fields = ['placa', 'marca', 'modelo']
+    # filterset_fields = ['tipo', 'activo']
+
+# --- FIN NUEVO VIEWSET ---
+
+class RemisionPDFView(APIView):
+    permission_classes = [IsAuthenticated, (IsAdminUser | IsJefeEmpresa)] # Define quién puede generar remisiones
+
+    def get(self, request, pk, format=None):
+        # Obtener el pedido o devolver 404
+        try:
+            pedido = PedidoTransporte.objects.select_related(
+                'cliente', 'conductor', 'cliente__empresa', 'confirmacion_cliente'
+            ).prefetch_related(
+                'items_pedido__producto', # Precarga items y producto si es BODEGAJE_SALIDA
+                # 'pruebas_entrega' # Descomenta si quieres añadir fotos al PDF
+            ).get(pk=pk)
+        except PedidoTransporte.DoesNotExist:
+            return Response({"detail": "Pedido no encontrado."}, status=status.HTTP_404_NOT_FOUND)
+
+        # Preparar contexto para la plantilla HTML
+        context = {
+            'pedido': pedido,
+            'items': pedido.items_pedido.all() if pedido.tipo_servicio == 'BODEGAJE_SALIDA' else None,
+            # Podrías añadir más datos si son necesarios
+        }
+
+        # Renderizar la plantilla HTML a un string
+        html_string = render_to_string('transporte/remision_template.html', context)
+
+        # Crear el PDF usando WeasyPrint
+        # Añadimos una base_url para que WeasyPrint pueda encontrar archivos estáticos/media si los usas en el template
+        # base_url = request.build_absolute_uri('/') # Opción 1: Base URL de la request
+        base_url = settings.BASE_DIR # Opción 2: Directorio base del proyecto (útil para rutas locales de CSS/imágenes si no usas static/media)
+
+        try:
+            html = HTML(string=html_string, base_url=base_url)
+            # Puedes añadir CSS externo si lo prefieres:
+            # css_path = os.path.join(settings.STATIC_ROOT, 'css/remision_styles.css') # Ejemplo
+            # main_doc = html.render(stylesheets=[CSS(filename=css_path)])
+            main_doc = html.render() # Renderiza sin CSS externo por ahora
+            pdf_bytes = main_doc.write_pdf()
+
+            # Crear la respuesta HTTP con el PDF
+            response = HttpResponse(pdf_bytes, content_type='application/pdf')
+            # Opcional: Forzar descarga con nombre de archivo
+            # response['Content-Disposition'] = f'attachment; filename="remision_pedido_{pedido.id}.pdf"'
+            # Opcional: Mostrar en el navegador en lugar de descargar
+            response['Content-Disposition'] = f'inline; filename="remision_pedido_{pedido.id}.pdf"'
+
+            return response
+
+        except Exception as e:
+            # Manejar errores de WeasyPrint o renderizado
+            print(f"Error generando PDF para pedido {pk}: {e}")
+            return Response({"detail": f"Error al generar el PDF: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
 
 # Vista para formulario de confirmación de cliente
 
@@ -585,3 +674,6 @@ class HistorialMesClienteList(generics.ListAPIView):
         ).order_by('-fecha_fin') # Ordenar por fecha de finalización descendente
 
         return queryset
+    
+
+    

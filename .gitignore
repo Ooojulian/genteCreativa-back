@@ -1,21 +1,32 @@
-# Entornos virtuales
+# Entorno virtual
 venv/
 env/
-.venv/
-*/__pycache__/
+*/venv/
+*/env/
+
+# Archivos compilados/cache de Python
+__pycache__/
 *.pyc
+*.pyo
+*.pyd
 
-# Archivos de configuración local y secretos (¡IMPORTANTE!)
+# Bases de datos locales (si usaste sqlite para probar)
+db.sqlite3
 *.sqlite3
-*.local_settings.py
-.env
 
-# Archivos de sistema operativo
+# Archivos de configuración de IDEs
+.idea/
+.vscode/
+
+# Archivos de media (opcional - decide si quieres versionarlos o no)
+# media/
+
+# Archivos de variables de entorno locales (si usas python-dotenv)
+.env
+*.env
+
+# Archivos temporales/sistema operativo
+*.swp
+*~
 .DS_Store
 Thumbs.db
-
-# Static files (si usas collectstatic en local para pruebas)
-# /static/ # Descomenta si no quieres subir la carpeta generada por collectstatic
-
-# Media files
-/media/ # Descomenta si no quieres subir archivos subidos por usuarios en desarrollo

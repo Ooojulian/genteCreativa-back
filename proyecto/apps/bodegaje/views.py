@@ -2,15 +2,22 @@
 from rest_framework import generics, viewsets, status
 from rest_framework.permissions import IsAuthenticated, IsAdminUser
 from rest_framework.response import Response
-from django.db import IntegrityError, DatabaseError 
-from .models import Producto, Ubicacion, Inventario
-from .serializers import ProductoSerializer, UbicacionSerializer, InventarioSerializer, MovimientoInventarioSerializer
-
+from django.db import IntegrityError, DatabaseError, transaction
+from .models import Producto, Ubicacion, Inventario, MovimientoInventario, Inventario
+from .serializers import ProductoSerializer, UbicacionSerializer, InventarioSerializer, MovimientoInventarioSerializer, EntradaInventarioSerializer, SalidaInventarioSerializer, InventarioSerializer
+from django.shortcuts import get_object_or_404 # <-- Útil para buscar objetos
+from rest_framework.decorators import action # <-- Importa action
 from apps.usuarios.permissions import IsCliente, IsJefeEmpresa, IsJefeInventario
+from apps.usuarios.models import Empresa
 from django.core.exceptions import PermissionDenied
 from .models import MovimientoInventario
 import logging
+from django_filters.rest_framework import DjangoFilterBackend
+from .filters import InventarioFilter
 from django.utils.translation import gettext_lazy as _ # Para mensajes de error
+from django.http import HttpResponse
+import openpyxl
+from io import BytesIO
 
 logger = logging.getLogger(__name__)
 
@@ -51,75 +58,218 @@ class UbicacionViewSet(viewsets.ModelViewSet):
 
 class InventarioViewSet(viewsets.ModelViewSet):
     serializer_class = InventarioSerializer
-    #permission_classes = [IsAuthenticated] # Permiso base
+    # Mantenemos los permisos anteriores para ver/gestionar en general
+    # permission_classes = [IsAuthenticated, (IsAdminUser | IsJefeEmpresa | IsJefeInventario)]
+    # Ajusta los permisos generales si es necesario
+
+    filter_backends = [DjangoFilterBackend] # Usa el backend de django-filter
+    filterset_class = InventarioFilter      # Especifica tu clase FilterSet
+    
 
     def get_queryset(self):
         user = self.request.user
-        # Logs para depuración
-        logger.debug(f"\n--- DEBUG: InventarioViewSet.get_queryset ---") # Usar logger.debug
-        logger.debug(f"User ID: {user.id}, Rol: {user.rol.nombre if user.rol else 'N/A'}")
-
-        # Queryset base optimizado
+        # El queryset base ahora se optimiza con select_related
+        # El filtrado por producto, ubicacion, empresa lo hará DjangoFilterBackend ANTES
         queryset = Inventario.objects.select_related('producto', 'ubicacion', 'empresa')
 
-        # Si es Admin o Jefe (Empresa o Inventario), permitir filtrar por empresa
+        # La lógica aquí solo se enfoca en la VISIBILIDAD según el rol,
+        # asumiendo que los filtros de producto/ubicacion/empresa ya fueron aplicados por el backend.
         if user.is_staff or (user.rol and user.rol.nombre in ['jefe_empresa', 'jefe_inventario', 'admin']):
-            empresa_id_filtro = self.request.query_params.get('empresa_id')
-            if empresa_id_filtro:
-                try:
-                    # Aplica el filtro si el parámetro existe y es válido
-                    queryset = queryset.filter(empresa_id=int(empresa_id_filtro))
-                    logger.debug(f"-> Vista Admin/Jefe: Filtrando por Empresa ID (param): {empresa_id_filtro}")
-                except (ValueError, TypeError):
-                    # Si el ID no es un número válido, decide qué hacer.
-                    # Podrías devolver vacío, un error 400, o (como aquí) devolver todo.
-                    logger.warning(f"-> Vista Admin/Jefe: empresa_id '{empresa_id_filtro}' inválido. Devolviendo todo el inventario.")
-                    # No aplicamos filtro adicional, queryset ya tiene todos los items optimizados
-            else:
-                 logger.debug(f"-> Vista Admin/Jefe: No se especificó filtro empresa_id. Devolviendo TODO el inventario.")
-            # Devuelve el queryset (filtrado o completo)
+            # Jefes/Admin pueden ver todo (lo que pasó los filtros)
+            # YA NO necesitamos filtrar por 'empresa_id' manualmente aquí
+            # if self.request.query_params.get('empresa_id'): ... # BORRAR ESTA LÓGICA MANUAL
             return queryset
-
-        # Si es Cliente, filtrar SIEMPRE por su propia empresa
         elif user.rol and user.rol.nombre == 'cliente' and user.empresa:
-            logger.debug(f"-> Vista Cliente: Filtrando por Empresa ID (propia): {user.empresa.id} (Nombre: {user.empresa.nombre})")
-            # Aplica el filtro por la empresa del usuario
-            # select_related ya se aplicó al inicio, no es necesario repetirlo
-            queryset = queryset.filter(empresa=user.empresa)
-            logger.debug(f"-> Vista Cliente: Queryset encontró {queryset.count()} items para esta empresa.")
-            return queryset
-
-        # Otros roles o usuarios sin rol/empresa no deberían ver inventario general
-        logger.debug("-> Vista Otro Rol/Sin Empresa: No cumple condiciones, devolviendo vacío.")
-        return Inventario.objects.none() # Devuelve un queryset vacío
-    
-    def get_permissions(self):
-        """
-        Define permisos basados en la acción solicitada.
-        """
-        # Permisos por defecto más restrictivos si es necesario
-        permission_classes = [IsAuthenticated] # Todos deben estar autenticados
-
-        if self.action in ['update', 'partial_update', 'create', 'destroy']:
-            # Solo Admin y Jefes pueden modificar/crear/borrar inventario
-            permission_classes.append((IsAdminUser | IsJefeEmpresa | IsJefeInventario))
-        elif self.action in ['list', 'retrieve']:
-             # Cliente puede listar/ver detalle (get_queryset filtra su vista)
-             # Jefes/Admin también pueden listar/ver detalle
-             # Cualquiera autenticado podría ver detalles (si la lógica de get_queryset lo permite)
-             # Mantenemos IsAuthenticated como base, get_queryset hace el filtrado fino
-             pass # Ya tiene IsAuthenticated
+            # Clientes solo ven su inventario (además de otros filtros aplicados)
+            # Este filtro adicional por la empresa del cliente SÍ es necesario aquí
+            return queryset.filter(empresa=user.empresa)
         else:
-            # Acciones personalizadas u otras podrían requerir permisos de Admin/Jefe
-            permission_classes.append((IsAdminUser | IsJefeEmpresa | IsJefeInventario))
+             # Si no es ninguno de los anteriores, no debería ver nada
+            return Inventario.objects.none()
 
-        # Instancia y devuelve las clases de permiso
+    def get_permissions(self):
+        # Define permisos por acción
+        permission_classes = [IsAuthenticated] # Base: estar autenticado
+
+        if self.action in ['list', 'retrieve']:
+            # Quién puede VER lista/detalle (clientes ven suyo, jefes ven todo filtrado)
+            permission_classes.append((IsAdminUser | IsJefeEmpresa | IsJefeInventario | IsCliente))
+        elif self.action in ['entrada', 'salida']:
+            # Quién puede registrar entradas/salidas manuales
+            permission_classes.append((IsAdminUser | IsJefeEmpresa | IsJefeInventario))
+        else:
+            # Restringe otras acciones (create, update, destroy directos) si quieres
+            permission_classes.append((IsAdminUser | IsJefeEmpresa)) # Solo roles altos
+            # O deshabilítalas sobrescribiendo los métodos (ver abajo)
+
         return [permission() for permission in permission_classes]
 
-    # --- Métodos create, perform_create, perform_update, perform_destroy ---
-    # (Asegúrate que estos métodos estén definidos como los tenías antes,
-    # incluyendo el manejo de IntegrityError y la creación de logs
-    # en MovimientoInventario si esa lógica sigue siendo necesaria)
+    # --- ACCIÓN PERSONALIZADA PARA ENTRADAS ---
+    @action(detail=False, methods=['post'], url_path='entrada')
+    @transaction.atomic # Asegura que la operación sea atómica
+    def entrada(self, request):
+        serializer = EntradaInventarioSerializer(data=request.data)
+        if serializer.is_valid():
+            data = serializer.validated_data
+            producto = data['producto_id'] # El serializer devuelve el objeto
+            ubicacion = data['ubicacion_id']
+            empresa = data['empresa_id']
+            cantidad_entrada = data['cantidad']
+            motivo = data.get('motivo', 'Entrada manual registrada vía API.')
+            usuario_actual = request.user
+
+            # Usamos select_for_update para bloquear la fila si existe
+            inventario, created = Inventario.objects.select_for_update().get_or_create(
+                producto=producto,
+                ubicacion=ubicacion,
+                empresa=empresa,
+                defaults={'cantidad': 0} # Valor inicial si se crea
+            )
+
+            cantidad_anterior = inventario.cantidad
+            inventario.cantidad += cantidad_entrada
+            inventario.save() # Guarda el inventario actualizado/creado
+
+            # Registrar movimiento
+            MovimientoInventario.objects.create(
+                # inventario=inventario, # Puedes asociarlo si quieres
+                producto=producto,
+                ubicacion=ubicacion,
+                empresa=empresa,
+                tipo_movimiento='AJUSTE_POS', # O 'ENTRADA_MANUAL' si creas ese tipo
+                cantidad_anterior=cantidad_anterior,
+                cantidad_nueva=inventario.cantidad,
+                cantidad_cambio=cantidad_entrada,
+                usuario=usuario_actual if usuario_actual.is_authenticated else None,
+                motivo=motivo
+            )
+
+            # Devuelve el estado actualizado del inventario
+            inventario_serializer = InventarioSerializer(inventario)
+            return Response(inventario_serializer.data, status=status.HTTP_200_OK)
+        else:
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        
+    @action(detail=False, methods=['get'], url_path='exportar-excel')
+    def exportar_excel(self, request):
+        # 1. Aplicar los mismos filtros que la lista
+        #    filter_queryset() usa filter_backends y filterset_class configurados
+        #    para filtrar basado en request.query_params (?producto=X&empresa=Y...)
+        queryset = self.filter_queryset(self.get_queryset())
+
+        # 2. Crear un libro de Excel en memoria
+        workbook = openpyxl.Workbook()
+        sheet = workbook.active
+        sheet.title = 'Inventario Filtrado'
+
+        # 3. Escribir encabezados
+        headers = ['ID', 'Producto', 'SKU', 'Ubicación', 'Cantidad', 'Empresa Cliente', 'Fecha Creación', 'Última Actualización']
+        sheet.append(headers)
+
+        # 4. Escribir datos del queryset filtrado
+        for item in queryset:
+            # Accede a los campos relacionados de forma segura
+            sku = item.producto.sku if item.producto else ''
+            ubicacion_nombre = item.ubicacion.nombre if item.ubicacion else ''
+            empresa_nombre = item.empresa.nombre if item.empresa else ''
+            # Formatea fechas si quieres (opcional)
+            fecha_creacion_str = item.fecha_creacion.strftime('%Y-%m-%d %H:%M:%S') if item.fecha_creacion else ''
+            fecha_actualizacion_str = item.fecha_actualizacion.strftime('%Y-%m-%d %H:%M:%S') if item.fecha_actualizacion else ''
+
+            sheet.append([
+                item.id,
+                item.producto.nombre if item.producto else '',
+                sku,
+                ubicacion_nombre,
+                item.cantidad,
+                empresa_nombre,
+                fecha_creacion_str,
+                fecha_actualizacion_str
+            ])
+
+        # 5. Guardar el libro en un stream de bytes en memoria
+        excel_file = BytesIO()
+        workbook.save(excel_file)
+        excel_file.seek(0) # Rebobina el stream al principio
+
+        # 6. Crear la respuesta HTTP
+        response = HttpResponse(
+            excel_file.read(),
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+        response['Content-Disposition'] = 'attachment; filename="inventario_filtrado.xlsx"' # Sugiere nombre de archivo
+
+        return response
+    # --- FIN NUEVA ACCIÓN ---
+
+    # --- ACCIÓN PERSONALIZADA PARA SALIDAS ---
+    @action(detail=False, methods=['post'], url_path='salida')
+    @transaction.atomic # Asegura que la operación sea atómica
+    def salida(self, request):
+        serializer = SalidaInventarioSerializer(data=request.data)
+        if serializer.is_valid():
+            data = serializer.validated_data
+            producto = data['producto_id']
+            ubicacion = data['ubicacion_id']
+            empresa = data['empresa_id']
+            cantidad_salida = data['cantidad']
+            motivo = data.get('motivo', 'Salida manual registrada vía API.')
+            usuario_actual = request.user
+
+            try:
+                # Usamos select_for_update para bloquear la fila
+                inventario = Inventario.objects.select_for_update().get(
+                    producto=producto,
+                    ubicacion=ubicacion,
+                    empresa=empresa
+                )
+            except Inventario.DoesNotExist:
+                return Response(
+                    {"detail": _("No existe inventario para este producto/ubicación/empresa.")},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
+            # Validar stock
+            if inventario.cantidad < cantidad_salida:
+                return Response(
+                    {"detail": _(f"Stock insuficiente. Disponible: {inventario.cantidad}, Solicitado: {cantidad_salida}")},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            cantidad_anterior = inventario.cantidad
+            cantidad_nueva = inventario.cantidad - cantidad_salida
+
+            # Registrar movimiento ANTES de borrar (por si acaso)
+            MovimientoInventario.objects.create(
+                # inventario=inventario, # Asocia si quieres
+                producto=producto,
+                ubicacion=ubicacion,
+                empresa=empresa,
+                tipo_movimiento='AJUSTE_NEG', # O 'SALIDA_MANUAL'
+                cantidad_anterior=cantidad_anterior,
+                cantidad_nueva=cantidad_nueva,
+                cantidad_cambio=-cantidad_salida, # Negativo
+                usuario=usuario_actual if usuario_actual.is_authenticated else None,
+                motivo=motivo
+            )
+
+            # Actualizar o borrar inventario
+            if cantidad_nueva == 0:
+                inventario.delete()
+                return Response(
+                    {"detail": _("Salida registrada. Stock en cero, registro eliminado.")},
+                    status=status.HTTP_200_OK # O 204 No Content si prefieres
+                )
+            else:
+                inventario.cantidad = cantidad_nueva
+                inventario.save()
+                inventario_serializer = InventarioSerializer(inventario)
+                return Response(inventario_serializer.data, status=status.HTTP_200_OK)
+
+        else:
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
 
     def create(self, request, *args, **kwargs):
         # Manejo de duplicados (sin cambios respecto a la versión anterior)
