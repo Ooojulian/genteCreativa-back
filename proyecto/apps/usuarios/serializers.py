@@ -5,12 +5,43 @@ from django.contrib.auth.hashers import make_password
 from ..transporte.models import Vehiculo
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from django.utils.translation import gettext_lazy as _ # Importa para mensajes de error
+from django.contrib.auth.password_validation import validate_password
 
 # Serializer simple para mostrar info básica de Empresa (solo lectura anidada)
 class EmpresaSimpleSerializer(serializers.ModelSerializer):
     class Meta:
         model = Empresa
         fields = ('id', 'nombre')
+
+# --- NUEVO: Serializer para Cambiar Contraseña (por Admin/Jefe) ---
+class CambiarPasswordSerializer(serializers.Serializer):
+    new_password = serializers.CharField(
+        required=True,
+        write_only=True,
+        style={'input_type': 'password'},
+        validators=[validate_password] # Aplica validadores de complejidad de Django
+    )
+    confirm_password = serializers.CharField( # Campo de confirmación
+        required=True,
+        write_only=True,
+        style={'input_type': 'password'}
+    )
+
+    def validate(self, attrs):
+        # Valida que las contraseñas coincidan
+        if attrs['new_password'] != attrs['confirm_password']:
+            raise serializers.ValidationError({"confirm_password": _("Las contraseñas no coinciden.")})
+        return attrs
+
+    def save(self, **kwargs):
+        # Este método no guarda directamente, la lógica está en la vista
+        # Pero lo definimos para mantener la estructura de Serializer
+        password = self.validated_data['new_password']
+        user = self.context['user'] # Obtenemos el usuario del contexto pasado por la vista
+        user.set_password(password)
+        user.save(update_fields=['password'])
+        return user
+# --- FIN NUEVO ---
 
 # Serializer para el Token de Login que incluye datos del Usuario
 class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
