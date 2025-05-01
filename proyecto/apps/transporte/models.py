@@ -68,7 +68,9 @@ class Vehiculo(models.Model):
         ordering = ['placa'] # Ordenar por placa por defecto
 
     def __str__(self):
-        return f"{self.placa} ({self.get_tipo_display()})" # Muestra placa y tipo
+        # ESTA ES LA VERSIÓN CORREGIDA
+        tipo_str = str(self.tipo) if self.tipo else "Sin tipo"
+        return f"{self.placa} ({tipo_str})"
 
 
 # --- Función para definir ruta de subida ---
